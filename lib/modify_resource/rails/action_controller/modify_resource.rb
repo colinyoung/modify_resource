@@ -1,0 +1,226 @@
+require_relative 'resource_info'
+require_relative 'router'
+
+module ActionController
+  
+  module ModifyResource
+    include ResourceInfo
+    include ActionView::Helpers::TextHelper
+    
+    module ClassMethods
+      
+      # A shortcut - just add modify_on :create, :update
+      # if your variable is the controller's name -- e.g. @widget in WidgetsController
+      def modify_on(*actions)
+        # Define in the method so that the user could override if they wanted
+        options = actions.extract_options!
+        actions.each do |action|
+          unless method_defined?(action)
+            define_method action do
+              modify_resource_with action, options
+            end
+          end
+        end
+      end
+    end
+    
+    # :nodoc:
+    def self.included(base)
+      base.extend(ClassMethods)
+    end
+        
+    # Handles the usual @var = Model.find(params[:id]); @var.save
+    # etc. stuff.
+    def modify_resource_with(*args) # ([res=nil, ], verb=:update, options={}, args=nil)
+      # Set var to resource matching controller's name if res is a symbol
+      if args.first.is_a? Symbol or args.first.is_a? String
+        res = instance_variable_get(:"@#{resource_name}")
+      else
+        res = args.shift
+      end
+      
+      # Set up default values
+      verb      = args[0] || :update
+      options   = args[1] || {}
+      _params   = args[2] || nil
+      as_user   = nil
+      
+      # model_name is this res's model_name
+      model_name = res.class.model_name.underscore.downcase
+      
+      # Grab params if not set
+      _params ||= params[model_name]
+      
+      # We may need the current user instance
+      if options[:as_user] and res.respond_to?(:as_user)
+        current_user = self.send "current_#{options[:as_user]}"
+        Rails.logger.info "Setting #{current_user} on #{res}"
+        res.as_user = current_user
+      end
+      
+      # Actually perform update, or create, destroy, etc.
+      modified = case verb
+        when :update
+          res.update_permitted_attributes(_params)
+        when :create
+          res.deep_attributes = _params
+          res.persisted?
+        else
+          res.method(verb).arity == 0 ? res.send(verb) : res.send(verb, _params)
+        end
+        
+      # the resource was updated
+      instance_variable_set :"@#{resource_name}", res
+      
+      raise 'As_user MUST be unset on ALL items.' unless res.as_user.nil?
+      
+      # We're updating a nested resource, so we need to set its parent for it
+      update_resource_parent(res) unless parent_for(res).present?
+      
+      # Actually save or create.
+      if modified
+        
+        unless request.xhr?
+          
+          after = params[:after]
+          unless options[:redirect_to].blank?
+            router = Router.new
+            success_path = router.send options[:redirect_to]
+          end
+          success_path ||= resource_path_with_base(:production, res)
+          
+          msg = options[:success].try(:call, res)
+          
+          if msg.blank?
+            
+            msg = "#{action_name.capitalize.gsub(/e$/,'')}ed "
+            
+            if after.present? and after.pluralize == after
+              # Redirect to the plural (index) page
+              model_name = params[:after]
+              msg << model_name.pluralize
+              success_path << '/' + after
+            else
+              # Redirect to the show page for the resource.
+              # Flash is like 'Widget 2 has been updated'.
+              name = String.new.tap do |s|
+                break s = res.title if res.respond_to? :title
+                break s = res.name if res.respond_to? :name
+                s = res.id
+              end
+              msg << "#{model_name.humanize.downcase} '#{truncate(name, length: 20)}'"
+            end
+          end
+          
+          flash[:notice] = msg
+          redirect_to success_path
+        else
+          render json: res
+        end
+      else
+        messages = res.errors.messages
+        unless request.xhr?
+          flash[:error] = messages
+          begin
+            render :edit
+          rescue
+            # They didn't respond to that action
+            if res.persisted?
+              render :show
+            else
+              render :new
+            end
+          end
+        else
+          render json: {errors: messages}, status: :unprocessable_entity
+        end
+      end
+    end
+    
+    private
+    
+    # :nodoc:
+    def resource_path_with_base(base, res)
+      components, resources = path_components_for(res, base).try(:compact)
+      
+      return url_for unless components.present?
+      
+      unless components.nil? || components.empty?
+        path = components.join('_') + '_path'
+        send(path, *resources)
+      else
+        :"#{base.to_s.pluralize}"
+      end
+    end
+    
+    # :nodoc: Climbs up the resource's parent associations to generate a rails route
+    def path_components_for(res, base, components=[], resources=[])
+      return nil unless res.present?
+      
+      component = component_for(res)
+      
+      # Redirect to the index if the res was just deleted
+      component = component.pluralize unless res.persisted?
+      
+      components.unshift component
+      resources.unshift res if res.persisted?
+      
+      unless component.to_s == base.to_s
+        path_components_for(parent_for(res), base, components, resources)
+      else
+        [components, resources]
+      end
+    end
+    
+    # :nodoc: gets path component for a resource
+    def component_for(res)
+      res.class.model_name.downcase
+    end
+    
+    # :nodoc: gets a nested resource's parent
+    def parent_for(res)      
+      parent_name = possible_parents_for(res).first
+      return nil unless parent_name.present?
+      
+      component = component_for(res)
+      parent_component = parent_name.sub('_id', '')
+      res.send(parent_component)
+    end 
+    
+    # :nodoc: gets possible parents based on attributes ending in '_id'
+    def possible_parents_for(res)      
+      Array.new.tap do |possibilities|
+        res.attributes.keys.each do |field|
+          next unless field[/_id$/]
+          cleaned = field.sub '_id', ''
+          # Fields that end in _id but do not point to a constant are ignored.
+          possibilities << cleaned if Object.const_defined? cleaned.classify
+        end
+      end
+    end
+    
+    # :nodoc: Adds the resource to its parent
+    def update_resource_parent(res)
+      parents = possible_parents_for(res)
+      return if parents.empty?
+      
+      if parents.count > 1
+        raise "Can't guess parent, multiple options for resource.\n#{res.inspect}\n#{parents.inspect}"
+      end
+      
+      parent_class = parents.first.classify.constantize
+      parent_name = parent_class.model_name.downcase
+      parent_param = parent_name + '_id'
+      parent = parent_class.find(params[parent_param])
+      return unless parent.present?
+      
+      instance_variable_set :"@#{parent_name}", parent
+      
+      child_name = res.class.model_name.downcase.pluralize
+      child_name = child_name.singularize if !parent.respond_to?(child_name)
+      
+      association = parent.send(child_name)
+      association << res
+    end
+  end
+end
