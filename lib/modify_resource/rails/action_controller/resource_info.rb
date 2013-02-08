@@ -11,14 +11,12 @@ module ActionController
       end
     
       def resource
-        returning res = nil do
-          res = instance_variable_get("@#{resource_name}")
-          begin
-            res ||= model_class.find(params[:id])
-          rescue; end
-        end
-      end
-      
+        res = instance_variable_get "@#{resource_name}"
+        begin
+          res ||= model_class.find params[:id]
+        rescue; end
+        res
+      end      
     end
   end
 end

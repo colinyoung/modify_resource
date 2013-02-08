@@ -16,14 +16,17 @@ module ActiveModel
     end
     
     def deep_attributes=(attributes)
-      m = /_attributes$/
       attributes.each do |key, value|
-        next unless key.to_s[m]
-        nested = key.gsub(m, '')
-        self.send(nested).each do |built|
-          value.map { |sub_params| built.attributes = sub_params }
+        next unless key.to_s[m = /_attributes$/]
+        nested = self.send key.gsub(m, '')
+        if nested.respond_to? :each
+          self.send(nested).each do |built|
+            value.map { |sub_params| built.attributes = sub_params }
+          end
+          attributes.delete(key)
+        else
+          nested.attributes = value
         end
-        attributes.delete(key)
       end
       self.attributes = attributes
       save

@@ -52,10 +52,10 @@ module ActionController
       _params ||= params[model_name]
       
       # We may need the current user instance
-      if options[:as_user] and res.respond_to?(:as_user)
-        current_user = self.send "current_#{options[:as_user]}"
-        Rails.logger.info "Setting #{current_user} on #{res}"
-        res.as_user = current_user
+      options[:as_current] ||= options[:as_user] # Backwards compat
+      
+      if options[:as_current] and res.respond_to?(:as_user)
+        res.as_user = self.send "current_#{options[:as_current]}"
       end
       
       # Actually perform update, or create, destroy, etc.
@@ -72,7 +72,7 @@ module ActionController
       # the resource was updated
       instance_variable_set :"@#{resource_name}", res
       
-      raise 'As_user MUST be unset on ALL items.' unless res.as_user.nil?
+      raise 'As_user MUST be unset on ALL items.' if res.valid? and res.as_user.present?
       
       # We're updating a nested resource, so we need to set its parent for it
       update_resource_parent(res) unless parent_for(res).present?
@@ -83,9 +83,13 @@ module ActionController
         unless request.xhr?
           
           after = params[:after]
-          unless options[:redirect_to].blank?
+          unless (path = options[:redirect_to]).blank?
             router = Router.new
-            success_path = router.send options[:redirect_to]
+            success_path = if options[:redirect_with_resource] == false
+              router.send path
+            else
+              router.send path, *res
+            end
           end
           success_path ||= resource_path_with_base(:production, res)
           
@@ -179,11 +183,11 @@ module ActionController
     
     # :nodoc: gets a nested resource's parent
     def parent_for(res)      
-      parent_name = possible_parents_for(res).first
-      return nil unless parent_name.present?
+      parents = possible_parents_for(res)
+      return nil unless parents.count == 1
       
       component = component_for(res)
-      parent_component = parent_name.sub('_id', '')
+      parent_component = parents[0].sub('_id', '')
       res.send(parent_component)
     end 
     
@@ -202,7 +206,7 @@ module ActionController
     # :nodoc: Adds the resource to its parent
     def update_resource_parent(res)
       parents = possible_parents_for(res)
-      return if parents.empty?
+      return if parents.empty? or parents.count > 1
       
       if parents.count > 1
         raise "Can't guess parent, multiple options for resource.\n#{res.inspect}\n#{parents.inspect}"
