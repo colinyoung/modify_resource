@@ -82,13 +82,14 @@ module ActionController
         
         unless request.xhr?
           
+          options[:redirect_with_resources] ||= [ :self ]
           after = params[:after]
           unless (path = options[:redirect_to]).blank?
             router = Router.new
-            success_path = if options[:redirect_with_resource] == false
+            success_path = if options[:redirect_with_resources].blank?
               router.send path
             else
-              router.send path, *res
+              router.send path, *collect_resources_for(res, options[:redirect_with_resources])
             end
           end
           success_path ||= resource_path_with_base(:production, res)
@@ -225,6 +226,11 @@ module ActionController
       
       association = parent.send(child_name)
       association << res
+    end
+    
+    # Converts a list of symbols into the items necessary to compose redirection URLS
+    def collect_resources_for res, arr
+      arr.collect { |i| res.send(i) }
     end
   end
 end
