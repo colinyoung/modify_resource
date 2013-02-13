@@ -230,7 +230,9 @@ module ActionController
     
     # Converts a list of symbols into the items necessary to compose redirection URLS
     def collect_resources_for res, arr
-      arr.collect { |i| res.send(i) }
+      arr.collect do |member|
+        member == :self ? res : res.__send__(member)
+      end
     end
   end
 end
