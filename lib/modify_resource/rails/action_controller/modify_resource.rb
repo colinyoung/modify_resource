@@ -216,8 +216,13 @@ module ActionController
       parent_class = parents.first.classify.constantize
       parent_name = parent_class.model_name.downcase
       parent_param = parent_name + '_id'
-      parent = parent_class.find(params[parent_param])
-      return unless parent.present?
+      return unless params[parent_param].present?
+      
+      begin
+        parent = parent_class.find(params[parent_param])
+      rescue ActiveRecord::RecordNotFound
+        return # Parent id wasn't given in parameters. Let's let the model validations handle this.
+      end
       
       instance_variable_set :"@#{parent_name}", parent
       
