@@ -44,8 +44,7 @@ module ActionController
     private
     
     def add_user_id_to(hash_or_user, user_hash)
-      return unless hash_or_user.present?
-      raise UserNotProvidedError unless user = user_hash[:as]
+      return unless hash_or_user.present? and user = user_hash[:as]
       user_class = user.class.model_name.downcase.underscore # 'user', etc.
       
       case hash_or_user
@@ -59,7 +58,7 @@ module ActionController
     def update_resource(*args) # resource, (optional: fields=[]), user_hash={}
       resource = args.first
       user_hash = args.last
-      raise UserNotProvidedError unless user = user_hash[:as]
+      return unless user = user_hash[:as]
       fields = args[1] if args.count > 2
       
       resource_name = resource.class.name.downcase
@@ -81,7 +80,4 @@ module ActionController
       end
     end
   end
-end
-
-class UserNotProvidedError < StandardError
 end
