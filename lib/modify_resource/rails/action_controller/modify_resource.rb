@@ -87,19 +87,20 @@ module ActionController
 
           # Collect options for `url_for()`
           url_options = options[:url_options] || {}
+          path_options = options[:path_options] || {}
 
           # Determine the success path.
           unless (path = options[:redirect_to]).blank?
             router = Router.new
-            success_path = if options[:redirect_with_resources] and options[:path_options].blank?
+            collected_resources = collect_resources_for(res, options[:redirect_with_resources])
+            # `url_for()` options may be dynamic.
+            path_options.each do |k,v|
+              url_options[k] = v.call(*collected_resources) if v.is_a? Proc
+              collected_resources.pop if k == :anchor # Remove last item, because we're using it in the anchor
+            end
+            success_path = if collected_resources.blank?
               router.send path, url_options
             else
-              collected_resources = collect_resources_for(res, options[:redirect_with_resources])
-              # `url_for()` options may be dynamic.
-              options[:path_options].each do |k,v|
-                url_options[k] = v.call(*collected_resources) if v.is_a? Proc
-                collected_resources.pop if k == :anchor # Remove last item, because we're using it in the anchor
-              end
               router.send path, *collected_resources, url_options
             end
           end
