@@ -246,6 +246,10 @@ module ActionController
     def determine_redirect_path res, options
       unless (path = options[:redirect_to]).blank?
         router = Router.new
+
+        url_options = options[:url_options] || {}
+        path_options = options[:path_options] || {}
+
         collected_resources = collect_resources_for(res, options[:redirect_with_resources])
         # `url_for()` options may be dynamic.
         path_options.each do |k,v|
