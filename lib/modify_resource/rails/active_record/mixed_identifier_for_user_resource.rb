@@ -1,5 +1,7 @@
 module MixedIdentifierForUserResource    
   def has_mixed_identifier_for(user_resource, options={})
+
+    options.reverse_merge! required: false
     
     user_resource = user_resource.to_s
     
@@ -30,12 +32,18 @@ module MixedIdentifierForUserResource
       
       # Before saving, build the user resource on the current model
       before_validation do
-        raise "User resource required for " + self.class.model_name + self.attributes.inspect if #{user_resource}.nil?
-        if #{user_resource}.new_record?
-          unless #{user_resource}.respond_to? :invite_as_user!
-            raise 'You must implement #invite_as_user! on your user model if you include MixedIdentifierForUserResource in it.'
+        if #{user_resource}.nil?
+          if options[:required]
+            self.errors.add "#{user_resource}".to_sym, "required for " + self.class.model_name + self.attributes.inspect
+          else
+            return
           end
-          raise 'You cannot build a ' + self.class.model_name + ' without a user present.' unless @as_user.present?
+        end
+        if #{user_resource}.present? and #{user_resource}.new_record?
+          unless #{user_resource}.respond_to? :invite_as_user!
+            self.errors.add "#{user_resource}".to_sym, 'must define #invite_as_user! if you include MixedIdentifierForUserResource in it.'
+          end
+          self.errors.add "#{user_resource}".to_sym, 'cannot be built without a user present' unless @as_user.present?
           new_member = #{user_resource}.invite_as_user! @as_user
           self.#{user_resource} = new_member
         else
