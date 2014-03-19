@@ -44,7 +44,7 @@ module MixedIdentifierForUserResource
         end
         if #{user_resource}.present? and #{user_resource}.new_record? and #{user_resource}.respond_to? :invite_as_user!
           self.errors.add "#{user_resource}".to_sym, 'cannot be built without a user present' unless self.as_user.present?
-          new_member = #{user_resource}.invite_as_user! self.as_user, options[:invite_options]
+          new_member = #{user_resource}.invite_as_user! self.as_user, options[:invite_options] || {}
           self.#{user_resource} = new_member
         else
           self.#{user_resource} = #{user_resource}
