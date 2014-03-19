@@ -4,6 +4,9 @@ module MixedIdentifierForUserResource
     options.reverse_merge! required: false
     
     user_resource = user_resource.to_s
+
+    # the matching field - such as an email address - used to instantiate or find the other (user) resource
+    key = options[:key] || 'email'
     
     self.send :attr_accessible, :"#{user_resource}_identifier"
     
@@ -17,13 +20,13 @@ module MixedIdentifierForUserResource
           self.#{user_resource} = #{user_resource.classify}.find(identifier)
         else
           # Try to uncover the as_user of either this resource or the parent
-          self.#{user_resource} = #{user_resource.classify}.find_or_initialize_by_email(identifier)
+          self.#{user_resource} = #{user_resource.classify}.find_or_initialize_by_#{key}(identifier)
         end
       end
       
       def #{user_resource}_identifier
         resource = self.#{user_resource}
-        resource.try(:id) || resource.try(:email) || resource.try(:email_address)
+        resource.try(:id) || resource.try(:"#{key}")
       end
       
       def mass_assignment_authorizer(role)
@@ -39,15 +42,12 @@ module MixedIdentifierForUserResource
             return
           end
         end
-        if #{user_resource}.present? and #{user_resource}.new_record?
-          unless #{user_resource}.respond_to? :invite_as_user!
-            self.errors.add "#{user_resource}".to_sym, 'must define #invite_as_user! if you include MixedIdentifierForUserResource in it.'
-          end
+        if #{user_resource}.present? and #{user_resource}.new_record? and #{user_resource}.respond_to? :invite_as_user!
           self.errors.add "#{user_resource}".to_sym, 'cannot be built without a user present' unless @as_user.present?
           new_member = #{user_resource}.invite_as_user! @as_user
           self.#{user_resource} = new_member
         else
-          self.#{user_resource}_id = #{user_resource}_id
+          self.#{user_resource} = #{user_resource}
         end
       end
     END
