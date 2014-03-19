@@ -65,15 +65,17 @@ module ActionController
       parameters = params[resource_name]
       
       if parameters.present? and fields.present?
+        # update the parameters hash with modified resources
         fields.each do |field|
         
           field_attribute = field.to_s + '_attributes' unless field[/_attributes/].present?
           handle = parameters[field_attribute]
   
-          handle = [handle] unless handle.is_a?(Array)
-          handle.each do |individual_resource|
+          updated = Array(handle).each do |individual_resource|
             add_user_id_to(individual_resource, as: user)
           end
+
+          params[resource_name][field_attribute] = updated
         end
       else
         add_user_id_to(resource, as: user)

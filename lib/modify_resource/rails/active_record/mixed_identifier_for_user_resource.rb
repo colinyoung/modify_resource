@@ -12,7 +12,7 @@ module MixedIdentifierForUserResource
     class_eval <<-END
       def #{user_resource}_identifier=(identifier)
         if identifier.is_a? Fixnum or identifier.numeric? or identifier.parameter_id?
-          self.#{user_resource}_id = identifier
+          self.#{user_resource} = #{user_resource.classify}.find(identifier)
         else
           # Try to uncover the as_user of either this resource or the parent
           self.#{user_resource} = #{user_resource.classify}.find_or_initialize_by_email(identifier)
@@ -28,10 +28,18 @@ module MixedIdentifierForUserResource
         super(role) << "#{user_resource}_identifier"
       end
       
+      # Before saving, build the user resource on the current model
       before_validation do
-        if #{user_resource}.present? and #{user_resource}.new_record? and #{user_resource}.respond_to? :invite!
-          #{user_resource}.invite! @as_user
-          self.#{user_resource}_id = #{user_resource}.id
+        raise "User resource required for " + self.class.model_name + self.attributes.inspect if #{user_resource}.nil?
+        if #{user_resource}.new_record?
+          unless #{user_resource}.respond_to? :invite_as_user!
+            raise 'You must implement #invite_as_user! on your user model if you include MixedIdentifierForUserResource in it.'
+          end
+          raise 'You cannot build a ' + self.class.model_name + ' without a user present.' unless @as_user.present?
+          new_member = #{user_resource}.invite_as_user! @as_user
+          self.#{user_resource} = new_member
+        else
+          self.#{user_resource}_id = #{user_resource}_id
         end
       end
     END

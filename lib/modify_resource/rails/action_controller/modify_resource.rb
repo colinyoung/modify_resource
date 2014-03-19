@@ -55,7 +55,8 @@ module ActionController
       options[:as_current] ||= options[:as_user] # Backwards compat
 
       if options[:as_current] and res.respond_to?(:as_user)
-        res.as_user = self.send "current_#{options[:as_current]}"
+        current_user = self.send "current_#{options[:as_current]}"
+        res.as_user = current_user
       end
 
       # Actually perform update, or create, destroy, etc.
