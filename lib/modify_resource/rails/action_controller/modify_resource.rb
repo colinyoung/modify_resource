@@ -54,8 +54,8 @@ module ActionController
       # We may need the current user instance
       options[:as_current] ||= options[:as_user] # Backwards compat
 
-      if options[:as_current] and res.respond_to?(:as_user)
-        current_user = self.send "current_#{options[:as_current]}"
+      if res.respond_to?(:as_user)
+        current_user = self.send "current_#{options[:as_current] || 'user'}" rescue nil
         res.as_user = current_user
       end
 
